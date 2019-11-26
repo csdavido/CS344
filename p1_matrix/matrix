@@ -1,0 +1,306 @@
+#!/bin/bash
+pInput="pInput"
+#UTILITY FUNCTIONS
+getRows() {
+  # Name
+  #   getRow
+  # DESCRIPTION
+  #   returns the number of rows in a matrix
+  # Author
+  #   David Rider (riderda@oregonstate.edu)
+  # Citation: https://stackoverflow.com/a/5761281
+  rows=0
+  while read lineInput
+  do
+     ((rows++))
+  done < "$1"
+  return $rows
+}
+getCols() {
+  # Name
+  #   getCols
+  # DESCRIPTION
+  #   returns the numbers of columns in a matrix
+  # Author
+  #   David Rider (riderda@oregonstate.edu)
+  read -a lineInput < $1
+  cols=${#lineInput[@]}
+  return $cols
+}
+getCommand() {
+  #echo "in getCommand"
+  # Name
+  #   getCommand
+  # DESCRIPTION
+  #   recieves the user's command, checks input, 
+  #   and calls each function
+  # Author
+  #   David Rider (riderda@oregonstate.edu)
+  #DIMS ONE ARGUMENT
+  if [[ $1 == "dims" && $# == "2" && -r "$2" ]]
+  then
+  	dims $2
+  #DIMS PIPED ARGUMENT
+  elif [[ $1 == "dims" &&  $# == "1" ]]
+  then
+	while read line
+      do
+        echo "$line" >> $pInput
+      done
+        dims $pInput
+        rm $pInput
+  #TRANSPOSE
+  elif [[ $1 == "transpose" && $# == "2" && -r "$2" ]]
+  then
+    transpose $2
+  #MEAN
+  elif [[ $1 == "mean" && $# == "2" && -r "$2" ]]
+  then
+    mean $2
+  #ADD
+  elif [[ $1 == "add" && $# == "3" && -r "$2" && -r "$3" ]]
+  then
+  	m1Dims=`dims $2`
+    m2Dims=`dims $3`
+
+    if [[ "$m1Dims" != "$m2Dims" ]]
+      then
+  	  echo "Error: matrices must be the same size!" 1>&2
+  	exit 1
+    else	
+  	  add $2 $3
+  	fi
+  #MULTIPLY
+  elif [[ $1 == "multiply" && $# == "3" && -r "$2" && -r "$3" ]]
+  then
+    m1Cols=`getCols $2`
+    m2Rows=`getRows $3`
+    if [[ "$m1Cols" != "$m2Rows" ]]
+      then
+      echo "Error: matrices must be the same size!" 1>&2
+    exit 1
+    else	
+  	  multiply $2 $3
+  	fi
+  #GENERAL ERROR HANDLING
+  else
+	echo "Unrecognized command or incorrect number of arguments" 1>&2
+	exit 1
+  fi
+}
+#dims
+dims() {
+  # Name
+  #   dims
+  # DESCRIPTION
+  #   print the dimensions of the matrix as the number of rows, 
+  #   followed by a space, then the number of columns
+  # Author
+  #   David Rider (riderda@oregonstate.edu)
+
+  #GET ROWS
+  getRows $1
+  rows=$?
+  #GET COLS
+  getCols $1
+  cols=$?
+  echo "$rows $cols"
+
+  return 0
+}
+#transpose
+transpose() {
+  # Name
+  #   transpose
+  # DESCRIPTION
+  #   reflect the elements of the matrix along the main diagonal. 
+  #   Thus, an MxN matrix will become an NxM matrix and the values 
+  #   along the main diagonal will remain unchanged
+  # Author
+  #   David Rider (riderda@oregonstate.edu)
+  # Citation
+  #   https://unix.stackexchange.com/a/461289
+
+  #GET COLS
+  getCols $1
+  cols=$?
+  #LOOP THROUGH COLS
+  for (( i=1; i<="$cols"; i++ ))
+  do
+  	#TRANSPOSE
+    cut -f "$i" "$1" | paste -s
+  done
+
+  return 0
+}
+#mean
+mean() {
+  # Name
+  #    mean
+  # DESCRIPTION
+  #    takes an MxN matrix and return an 1xN row vector, 
+  #    where the first element is the mean of column one, 
+  #    the second element is the mean of column two, and so on.
+  # Author
+  #   David Rider (riderda@oregonstate.edu)
+  # Citation: 
+  #   https://oregonstate.instructure.com/courses/1729341/assignments/7599754
+ 
+  #GET COLS AND ROWS
+  getRows $1
+  rows=$?
+  getCols $1
+  cols=$?
+  #LOOP THROUGH COLS
+  for col in `seq 1 $cols`
+  do
+  	total=0
+  	#LOOP THROUGH ROWS
+  	for row in `seq 1 $rows`
+  	do
+  	  #GET NUMBERS
+  	  num=`head -n $row < $1 | tail -n 1 | cut -f $col`
+  	  total=`expr $total + $num`
+  	done
+  	#CALCULATE MEAN
+  	meanVal="$(( $(( $total + $(($rows/2)) )) / $rows))"
+  	#CHECK FOR NEGATIVE VALUES
+  	if [[ $meanVal -lt 0 ]]
+  	then 
+  		meanVal=`expr $meanVal - 1`
+  	fi
+  	#DISPLAY
+  	echo -n $meanVal
+  	#CHECK FOR NEEDED TAB
+  	if [[ $col != $cols ]]
+  	then
+  		echo -ne "\t"
+  	fi
+  done
+  echo
+  return 0
+}
+#add
+add() {
+  # Name
+  #   add
+  # DESCRIPTION
+  #   takes two MxN matrices and add them together element-wise to produce an MxN matrix
+  # Author
+  #   David Rider (riderda@oregonstate.edu)
+  # Citation: 
+  #   Lecture videos
+  #   https://unix.stackexchange.com/questions/26601/how-to-read-from-two-input-files-using-while-loop
+  
+  #SET MATRICES
+  m1=$1
+  m2=$2
+  #SET VARIABLES
+  sum=0
+  iterator=1
+  #READ THROUGH LINE
+  while IFS= read -r m1Line && IFS= read -r m2Line <&3
+  do
+    echo "$m1Line" | tr '\t' '\n' > "tmp1"
+    echo "$m2Line" | tr '\t' '\n' > "tmp2"
+
+    #ADD
+    while read m1Num <&3 && read m2Num <&4
+    do
+      sum=$(($m1Num+$m2Num))
+      echo "$sum" >> "tmp3"
+      sum=0
+    done 3<"tmp1" 4<"tmp2"
+  done <$m1 3<$m2                                         
+  getCols $1
+  cols=$?
+  #FORMATING & DISPLAY
+  while read finishedNums
+  do
+    if [[ $iterator == $(($cols)) ]]
+    then
+      echo "$finishedNums"
+      iterator=0
+    else
+      echo "$finishedNums" | tr '\n' '\t'
+    fi
+    iterator=$(($iterator+1))
+  done < "tmp3"
+  #CLEAN TEMP FILES
+  rm tmp*
+
+  return 0
+}
+#multiply
+multiply() {
+  # Name
+  #   multiply
+  # DESCRIPTION
+  #    takes an MxN and NxP matrix and produce an MxP matrix
+  # Author
+  #   David Rider (riderda@oregonstate.edu)
+  # Citation
+  #   lecture videos
+  #   https://which-dwarf-are-you.blogspot.com/2015/06/bash-matrix-multiplication.html
+
+  m2=$1
+  m1=$2
+  #TRANSPOSE MATRIX 2 TO AID IN MULTIPLICATION
+  transpose $m2 > m2Trans
+  #GET DIMS OF MATRIXES
+  m1Dims=`dims $m1`
+  m2Dims=`dims $m2`
+  #GET ROWS FROM MATRIXES
+  m1Rows=`echo $m1Dims | cut -d " " -f 1`
+  m2Rows=`echo $m2Dims | cut -d " " -f 1`
+  #GET COLUMNS FROM MATRIXES
+  m1Cols=`echo $m1Dims | cut -d " " -f 2`
+  m2Cols=`echo $m2Dims | cut -d " " -f 2`
+
+  #LOOP THROUGH COLS OF M1
+  for m1col in `seq 1 $m1Cols`
+  do
+    #CUT FIRST COLUMN
+	header1=`cat $m1 | cut -f $m1col`
+
+	#GO THROUGH COLS OF M2
+	for m2col in `seq 1 $m2Rows`
+	do
+	  #VARIABLE TO HOlD PRODUCT
+	  total=0
+	  #REMOVE COLUMN FOR MULTIPLICATION
+	  header2=`cat m2Trans | cut -f $m2col`
+	  #LOOP THROUGH ROW
+	  for row in `seq 1 $m1Rows`
+	  do
+	    #GET FIRST NUMBER COLLECTED FROM FIRST LOOP
+		num1=`echo $header1 | cut -d " " -f $row`
+		#GET FIRST NUMBER COLLECTED FROM SECOND LOOP
+		num2=`echo $header2 | cut -d " " -f $row`
+		#SAVE THE PRODUCT OF THE TWO NUMBERS
+		tempTotal=$(( $num1 * $num2 ))
+		#SAVE THE TOTAL AND INCREMENT
+		total=$(( $tempTotal + $total ))
+	  done
+	  #STORE THE PRODUCT IN A TEMPORARY FILE
+	  echo -ne $total >> tempFile
+	  #ADD A TAB FOR FORMATTING
+	  if [[ $m2col != $m2Rows ]]
+	  then
+	    echo -ne "\t" >> tempFile
+	  fi
+	done
+	
+	echo >> tempFile
+  done
+
+  #TRASPOSE THE TEMPORARY FILE TO DISPLAY
+  transpose tempFile
+  #DELETE TEMPORARY FILES
+  rm m2Trans
+  rm tempFile
+
+  return 0
+}
+#GET COMMAND TO CALL FUNCTION
+getCommand $@
